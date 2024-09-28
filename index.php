@@ -7,11 +7,16 @@ EOD;
 
 use Symfony\Component\Panther\Client;
 
+
+$websiteTendersPage = 'https://tender.rusal.ru/Tenders';
+
 $client = Client::createChromeClient();
-$crawler = $client->request("GET", 'https://tender.rusal.ru/Tenders');
+
+$crawler = $client->request("GET", $websiteTendersPage);
+// getScrapedFiles($crawler);
 
 filterWebsite();
-scrapWebsite();
+scrapWebsite(100);
 
 function filterWebsite()
 {
@@ -40,75 +45,115 @@ function filterWebsite()
 }
 
 
-function scrapWebsite()
+function scrapWebsite($howManyPages = null)
 {
     sleep(2);
     global $client, $crawler, $scrolling_script;
     $client->executeScript($scrolling_script);
 
+    $scrapedItems = scrapTendersPage($howManyPages);
+    $scrapedItems = scrapeLotPages($scrapedItems);
+}
 
+function scrapTendersPage($howManyPages)
+{
+    global $crawler;
+    $scrapedItems = [];
+    $i = 0;
     while (true) {
-
         try {
-            scrapPage();
+            $scrapedPageItems = scrapeResultPage();
+            $scrapedItems = array_merge($scrapedItems, $scrapedPageItems);
         } catch (Throwable $error) {
             echo  "stale element error-------------------------------------------------\n";
             continue;
         }
 
+        $i++;
         $nextPageButton = $crawler->filter(".pagination")->last()->children()->last();
         $classStr = $nextPageButton->attr('class');
-        if (strpos($classStr, 'disabled') === false) {
+        if (strpos($classStr, 'disabled') === false && (is_null($howManyPages) || $i < $howManyPages)) {
             $nextPageButton->click();
         } else {
             break;
         }
     }
+
+    echo var_dump($scrapedItems);
+    echo count($scrapedItems) . "----------------------";
+    return $scrapedItems;
 }
 
-function scrapPage()
+function scrapeResultPage()
 {
     global $client, $crawler;
 
-    $crawler->filter(".block-item-row")->each(function ($item) {
-        $lotNumber = $item->filter("a")->eq(0)->text();
-        $organizer = $item->filter("a")->eq(1)->text();
-        $lotLink = $item->filter("a")->eq(2)->attr("href");
+    $scrapedItems = [];
+    $crawler->filter(".block-item-row")->each(function ($item) use (&$scrapedItems) {
 
-        echo "$lotNumber $organizer $lotLink------------------------------------\n";
+        $lotNumber = $item->filter("a")->eq(0)->text();
+        $lotNumber = substr($lotNumber, 2);
+
+        $organizer = $item->filter("a")->eq(1)->text();
+
+        $websiteMainPage = 'https://tender.rusal.ru';
+        $lotLink = $item->filter("a")->eq(2)->attr("href");
+        $lotLink = $websiteMainPage . $lotLink;
+
+        $scrapedItem = [
+            "lotNumber" => $lotNumber,
+            "organizer" => $organizer,
+            "lotLink" => $lotLink,
+        ];
+
+        $scrapedItems[] = $scrapedItem;
     });
 
 
-
-    // foreach ($items as $item) {
-    //     scrapItem($item);
-    // }
-
-
-    //Для каждого item на странице вызвать handleItem
+    return $scrapedItems;
 }
+
+function scrapeLotPages($scrapedItems)
+{
+    global $client;
+
+    foreach ($scrapedItems as &$scrapedItem) {
+        $crawler = $client->request("GET", $scrapedItem["lotLink"]);
+
+        $scrapedItem["beginDate"] = $crawler->filter("[data-field-name='Fields.QualificationBeginDate']")->text();
+        $scrapedItem["files"] = getScrapedFiles($crawler);
+    }
+
+    echo var_dump($scrapedItems) . '---------------------------------\n';
+    return $scrapedItems;
+}
+
+function getScrapedFiles($crawler)
+{
+    global $client;
+    $client->waitFor(".document-list", 2);
+
+    $scrapedFiles = [];
+    $crawler->filter(".file-download-link")->each(function ($link) use (&$scrapedFiles) {
+        $websiteMainPage = 'https://tender.rusal.ru';
+        $scrapedFileLink = $websiteMainPage . $link->attr("href");
+        $scrapedFileName = $link->text();
+
+        $scrapedFile = [
+            "fileName" => $scrapedFileName,
+            "link" => $scrapedFileLink,
+        ];
+
+        $scrapedFiles[] = $scrapedFile;
+    });
+    echo var_dump($scrapedFiles);
+    return $scrapedFiles;
+}
+
 
 //создать базу данных
 //
 
-function scrapItem($item)
-{
-    global $client, $crawler;
-    echo var_dump($item);
-    // $name = $item->eq(1)->children()->eq(0)->children()->eq(1)->text();
-    $name = $item->text();
-
-    echo $name . "\n";
-    //Вывести на экран и добавить в дб
-    //Номер лота
-    //Организатор
-    //Ссылку на страницу процедуры
-
-    //Страница процедуры:
-    //Дата начала подачи заявок
-    //Имя файла и ссылку на него
-
-}
 
 sleep(100);
 
