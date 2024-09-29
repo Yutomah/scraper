@@ -1,6 +1,8 @@
 <?php
 
-require('scraper.class.php');
+require_once('scraper.class.php');
+require_once('model.class.php');
+require_once('config.php');
 
 echo "Это приложение для скрапинга страницы https://tender.rusal.ru/Tenders\n";
 echo "Ведите число лотов, которое вы хотите соскрапить.\n";
@@ -27,20 +29,26 @@ while (true) {
 echo 'Скрапинг начался';
 
 Scraper::initialize();
-$scrapedData = Scraper::getScrapedData($lotAmount);
+$scrapedLots = Scraper::getScrapedLots($lotAmount);
 
 echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
-foreach ($scrapedData as $item) {
-    echo 'Номер лота: ' . $item['lotNumber'] . "\n";
-    echo 'Организатор: ' . $item['organizer'] . "\n";
-    echo 'Ссылка на страницу процедуры: ' . $item['lotLink'] . "\n";
-    echo 'Дата подачи заявок: ' . $item['beginDate'] . "\n";
+foreach ($scrapedLots as $lot) {
+    echo 'Номер лота: ' . $lot['lotNumber'] . "\n";
+    echo 'Организатор: ' . $lot['organizer'] . "\n";
+    echo 'Ссылка на страницу процедуры: ' . $lot['lotLink'] . "\n";
+    echo 'Дата подачи заявок: ' . $lot['beginDate'] . "\n";
 
     echo "Прикреплённые файлы: \n";
-    foreach ($item['files'] as $file) {
+    foreach ($lot['files'] as $file) {
         echo '----Название: ' . $file['name'] . "\n";
         echo '----Ссылка: ' . $file['link'] . "\n\n";
     }
     echo "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n";
 }
+echo "Количество найденых лотов: " . count($scrapedLots) . "\n";
+
+Model::initialize(CONFIG);
+$result = Model::add_items($scrapedLots);
+
+echo $result ? "Данные были успешно добавлены в базу данных \n" : "Данные не удалось добавить в базу данных\n";
